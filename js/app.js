@@ -3,8 +3,7 @@
   'use strict';
   const { LANGS, LEVELS, TEST_LAYOUT, LETTERS } = Prompts;
   const $ = s => document.querySelector(s);
-  const STORE = 'geo-tests-set-v1', KEY = 'geo-tests-api-key', MODEL = 'geo-tests-model';
-  const DEFAULT_MODEL = 'claude-opus-5-5';
+  const STORE = 'geo-tests-set-v1';
   const MAX_IMAGES = 20;
 
   const store = {
@@ -22,7 +21,6 @@
   let set = blankSet();
   let filter = 'all';
   let ctrl = null;
-  let noFallback = false;
 
   function save() {
     const copy = Object.assign({}, set, { images: [] });
@@ -42,41 +40,7 @@
   }
 
   // ---------- Claude ----------
-  async function callClaude(prompt, { images = [], effort = 'high', maxTokens = 32000, signal } = {}) {
-    const key = store.get(KEY);
-    if (!key) { openKeyDialog(); throw new Error('Укажите ключ Anthropic API (кнопка «Ключ API» вверху).'); }
-    const content = [];
-    images.forEach(im => content.push({ type: 'image', source: { type: 'base64', media_type: im.media, data: im.data } }));
-    content.push({ type: 'text', text: prompt.text });
-    const body = {
-      model: store.get(MODEL) || DEFAULT_MODEL,
-      max_tokens: maxTokens,
-      system: prompt.system,
-      messages: [{ role: 'user', content }],
-      output_config: { effort }
-    };
-    const headers = {
-      'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    };
-    if (!noFallback) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
-    let res;
-    try { res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body), signal }); }
-    catch (e) { if (e.name === 'AbortError') throw e; throw new Error('Нет соединения с api.anthropic.com: ' + e.message); }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = (data.error && data.error.message) || res.statusText;
-      if (res.status === 400 && !noFallback && /fallback|beta/i.test(msg)) { noFallback = true; return callClaude(prompt, { images, effort, maxTokens, signal }); }
-      if (res.status === 401) throw new Error('Ключ API не принят (401). Проверьте ключ.');
-      if (res.status === 429) throw new Error('Достигнут лимит запросов (429). Повторите шаг через минуту.');
-      if (res.status === 529 || res.status >= 500) throw new Error(`Сервис Claude перегружен (${res.status}). Повторите шаг.`);
-      throw new Error(`Ошибка API ${res.status}: ${msg}`);
-    }
-    if (data.stop_reason === 'refusal') throw new Error('Claude отказался отвечать на этот запрос. Измените материалы и повторите.');
-    if (data.stop_reason === 'max_tokens') throw new Error('Ответ оборвался по лимиту длины. Повторите шаг.');
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-  }
-  // На claude.ai страница обращается к Claude через аккаунт зрителя (возможность sample) — без ключа и оплаты.
+  // Страница обращается к Claude через аккаунт claude.ai зрителя (возможность sample) — без ключа и оплаты.
   let sampleFn = null;
   const runtime = (window.claude && typeof window.claude.use === 'function')
     ? Promise.all([
@@ -111,27 +75,16 @@
       throw new Error((e && SAMPLE_ERRORS[e.code]) || ('Сбой при обращении к Claude' + (e && e.message ? ': ' + e.message : '') + '. Повторите шаг.'));
     }
   }
-  const hasBackend = async () => { await runtime; return !!sampleFn || !!store.get(KEY); };
+  const hasBackend = async () => { await runtime; return !!sampleFn; };
   function updateBackendUI() {
-    $('#btnSettings').classList.toggle('hidden', !!sampleFn);
-    $('#backendNote').textContent = sampleFn ? 'Работает через ваш аккаунт claude.ai — ключ API не нужен.' : 'Для генерации нужен ключ Anthropic API (кнопка «Ключ API»).';
+    $('#backendNote').textContent = sampleFn ? 'Работает через ваш аккаунт claude.ai — без ключа и оплаты.' : 'Генерация работает на claude.ai через ваш аккаунт — без ключа и оплаты.';
   }
+  function openNoClaude() { $('#dlgNoClaude').showModal(); }
 
-  function parseJSON(text) {
-    let t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-    const a = t.indexOf('{'), b = t.lastIndexOf('}');
-    if (a < 0 || b < a) throw new Error('В ответе нет JSON');
-    return JSON.parse(t.slice(a, b + 1));
-  }
   async function callJSON(prompt, opts) {
     await runtime;
-    if (sampleFn) return sampleJSON(prompt, opts);
-    let lastErr;
-    for (let i = 0; i < 2; i++) {
-      const text = await callClaude(prompt, opts);
-      try { return parseJSON(text); } catch (e) { lastErr = e; }
-    }
-    throw new Error('Не удалось разобрать ответ Claude: ' + lastErr.message);
+    if (!sampleFn) { openNoClaude(); throw new Error('Генерация доступна только в версии на claude.ai.'); }
+    return sampleJSON(prompt, opts);
   }
 
   // ---------- нормализация ----------
@@ -493,12 +446,6 @@
     } catch (e) { toast('Не удалось прочитать файл: ' + e.message, 6000); }
   }
 
-  function openKeyDialog() {
-    $('#apiKey').value = store.get(KEY) || '';
-    $('#apiModel').value = store.get(MODEL) || DEFAULT_MODEL;
-    $('#dlgKey').showModal();
-  }
-
   // ---------- события ----------
   function bind() {
     $('#segGrade').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; set.grade = +b.dataset.v; syncInputs(); save(); });
@@ -521,7 +468,7 @@
     $('#thumbs').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if (!b) return; set.images.splice(+b.dataset.del, 1); renderThumbs(); updateHint(); });
 
     $('#btnGenerate').addEventListener('click', async () => {
-      if (!await hasBackend()) return openKeyDialog();
+      if (!await hasBackend()) return openNoClaude();
       if (set.questions.length && !set.demo && !await ask('Текущий набор будет заменён новым. Продолжить?', 'Заменить')) return;
       if (set.demo) { set.demo = false; set.questions = []; set.analysis = null; }
       filter = 'all';
@@ -544,14 +491,6 @@
       const keep = set.settings; set = blankSet(); set.settings = keep; store.del(STORE);
       $('#progressCard').classList.add('hidden'); $('#inputCard').classList.remove('hidden');
       syncInputs(); renderResult(); window.scrollTo({ top: 0 });
-    });
-    $('#btnSettings').addEventListener('click', openKeyDialog);
-    $('#saveKey').addEventListener('click', () => {
-      const k = $('#apiKey').value.trim(), m = $('#apiModel').value.trim();
-      if (k) store.set(KEY, k); else store.del(KEY);
-      if (m && m !== DEFAULT_MODEL) store.set(MODEL, m); else store.del(MODEL);
-      toast(k ? 'Ключ сохранён в этом браузере' : 'Ключ удалён');
-      updateHint();
     });
 
     $('#segFilter').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; filter = b.dataset.f; renderResult(); });
