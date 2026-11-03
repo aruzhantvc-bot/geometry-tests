@@ -79,8 +79,10 @@
 
       <div class="actions">
         <button class="btn primary big" id="btnGenerate" type="button">Создать 25 вопросов</button>
+        <button class="btn" id="btnDemo" type="button">Показать пример</button>
         <span class="muted" id="genHint"></span>
       </div>
+      <p class="muted small" id="backendNote"></p>
     </section>
 
     <!-- Прогресс -->
@@ -94,6 +96,10 @@
 
     <!-- Результат -->
     <section class="hidden" id="resultSection">
+      <div class="demo-banner hidden" id="demoBanner">
+        <div><strong>Это пример набора:</strong> 10 вопросов на казахском по теме «Площадь треугольника», 9 класс. Вопросы можно править, файлы — скачивать.</div>
+        <button class="btn small primary" id="btnDemoNew" type="button">Создать свой набор</button>
+      </div>
       <div class="result-head">
         <div>
           <h2 id="resultTitle">Набор</h2>
@@ -151,12 +157,20 @@
     </form>
   </dialog>
 
+  <dialog id="dlgAsk" class="dlg">
+    <form method="dialog">
+      <p id="askText"></p>
+      <div class="actions end"><button class="btn ghost" value="cancel">Отмена</button><button class="btn primary" id="askOk" value="ok">Да</button></div>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="js/figure.js"></script>
   <script src="js/prompts.js"></script>
   <script src="js/export.js"></script>
+  <script src="js/demo.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
