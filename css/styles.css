@@ -75,6 +75,7 @@ textarea.input { resize: vertical; min-height: 44px; }
 .btn:hover { filter: brightness(.96); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.primary { background: var(--accent); color: #fff; }
+a.btn { text-decoration: none; display: inline-block; }
 .btn.big { font-size: 16px; padding: 12px 24px; }
 .btn.small { font-size: 13px; padding: 5px 12px; }
 .btn.ghost { background: transparent; color: var(--accent); }
