@@ -76,6 +76,47 @@
     if (data.stop_reason === 'max_tokens') throw new Error('Ответ оборвался по лимиту длины. Повторите шаг.');
     return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
   }
+  // На claude.ai страница обращается к Claude через аккаунт зрителя (возможность sample) — без ключа и оплаты.
+  let sampleFn = null;
+  const runtime = (window.claude && typeof window.claude.use === 'function')
+    ? Promise.all([
+        window.claude.use('sample').catch(() => null),
+        window.claude.use('downloads').catch(() => null)
+      ]).then(([s, d]) => {
+        sampleFn = s;
+        if (d) Exporter.saver = (blob, name) => d.save({ filename: name, data: blob }).catch(e => { if (e && e.code !== 'declined') toast('Файл не сохранён: ' + (e.message || e.code)); });
+        updateBackendUI();
+      })
+    : Promise.resolve();
+  const SAMPLE_ERRORS = {
+    not_granted: 'Разрешите странице обращаться к Claude (запрос появляется при первом запуске) и повторите шаг.',
+    sampling_disabled: 'Claude недоступен для этого аккаунта.',
+    rate_limited: 'Достигнут лимит вашего аккаунта Claude. Повторите шаг позже.',
+    session_expired: 'Войдите в claude.ai заново и повторите шаг.',
+    refused: 'Claude отказался отвечать на этот запрос. Измените материалы и повторите.',
+    invalid_json: 'Claude вернул ответ не в том формате. Повторите шаг.',
+    prompt_too_large: 'Материалы урока слишком большие. Сократите конспект.',
+    image_rejected: 'Одно из изображений не подходит. Удалите его и повторите.'
+  };
+  async function sampleJSON(prompt, { images = [], signal } = {}) {
+    const blobs = images.map(im => { const b = atob(im.data), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new Blob([u], { type: im.media }); });
+    const opts = { modelTier: 'complex', signal, cache: false };
+    if (blobs.length) {
+      const lim = await sampleFn.limits().catch(() => null);
+      if (lim && lim.images) opts.images = blobs.slice(0, lim.images.maxCount);
+    }
+    try { return await sampleFn.json(prompt.system + '\n\n' + prompt.text, opts); }
+    catch (e) {
+      if (e && e.code === 'cancelled') { const a = new Error('Остановлено'); a.name = 'AbortError'; throw a; }
+      throw new Error((e && SAMPLE_ERRORS[e.code]) || ('Сбой при обращении к Claude' + (e && e.message ? ': ' + e.message : '') + '. Повторите шаг.'));
+    }
+  }
+  const hasBackend = async () => { await runtime; return !!sampleFn || !!store.get(KEY); };
+  function updateBackendUI() {
+    $('#btnSettings').classList.toggle('hidden', !!sampleFn);
+    $('#backendNote').textContent = sampleFn ? 'Работает через ваш аккаунт claude.ai — ключ API не нужен.' : 'Для генерации нужен ключ Anthropic API (кнопка «Ключ API»).';
+  }
+
   function parseJSON(text) {
     let t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     const a = t.indexOf('{'), b = t.lastIndexOf('}');
@@ -83,6 +124,8 @@
     return JSON.parse(t.slice(a, b + 1));
   }
   async function callJSON(prompt, opts) {
+    await runtime;
+    if (sampleFn) return sampleJSON(prompt, opts);
     let lastErr;
     for (let i = 0; i < 2; i++) {
       const text = await callClaude(prompt, opts);
@@ -283,11 +326,12 @@
     const has = set.questions.length > 0 || !!set.analysis;
     $('#resultSection').classList.toggle('hidden', !has);
     $('#bottombar').classList.toggle('hidden', !set.questions.length);
+    $('#demoBanner').classList.toggle('hidden', !set.demo);
     if (!has) return;
     const a = set.analysis || {};
     $('#resultTitle').textContent = a.topic || set.topic || 'Набор';
     const L = Prompts.langInfo(set);
-    $('#resultMeta').textContent = `${set.grade} класс · ${L ? (L.name || L.english) : ''} · ${set.questions.length} из 25 вопросов · с рисунком: ${set.questions.filter(q => q.figType !== 'none').length}`;
+    $('#resultMeta').textContent = `${set.grade} класс · ${L ? (L.name || L.english) : ''} · ${set.questions.length}${set.demo ? '' : ' из 25'} вопросов · с рисунком: ${set.questions.filter(q => q.figType !== 'none').length}`;
     const warn = set.questions.filter(q => q.qa.status === 'warn').length;
     const tests = [...new Set(set.questions.map(q => q.test))].sort();
     const fb = (v, label) => `<button type="button" data-f="${v}" aria-pressed="${filter === v}">${label}</button>`;
@@ -476,9 +520,10 @@
     });
     $('#thumbs').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if (!b) return; set.images.splice(+b.dataset.del, 1); renderThumbs(); updateHint(); });
 
-    $('#btnGenerate').addEventListener('click', () => {
-      if (!store.get(KEY)) return openKeyDialog();
-      if (set.questions.length && !confirm('Текущий набор будет заменён новым. Продолжить?')) return;
+    $('#btnGenerate').addEventListener('click', async () => {
+      if (!await hasBackend()) return openKeyDialog();
+      if (set.questions.length && !set.demo && !await ask('Текущий набор будет заменён новым. Продолжить?', 'Заменить')) return;
+      if (set.demo) { set.demo = false; set.questions = []; set.analysis = null; }
       filter = 'all';
       $('#inputCard').classList.add('hidden');
       runPipeline('all').then(updateHint);
@@ -488,9 +533,14 @@
     $('#btnStop').addEventListener('click', () => { if (ctrl) ctrl.abort(); });
     $('#steps').addEventListener('click', e => { const b = e.target.closest('[data-retry]'); if (b) retryStep(b.dataset.retry); });
     $('#btnShowInput').addEventListener('click', () => { $('#inputCard').classList.toggle('hidden'); });
-    $('#btnNew').addEventListener('click', () => {
+    $('#btnDemoNew').addEventListener('click', () => $('#btnNew').click());
+    $('#btnDemo').addEventListener('click', () => {
       if (ctrl) return toast('Сначала остановите генерацию');
-      if ((set.questions.length || set.notes) && !confirm('Начать новый набор? Текущий будет удалён из браузера.')) return;
+      showDemo();
+    });
+    $('#btnNew').addEventListener('click', async () => {
+      if (ctrl) return toast('Сначала остановите генерацию');
+      if ((set.questions.length || set.notes) && !set.demo && !await ask('Начать новый набор? Текущий будет удалён из браузера.', 'Начать')) return;
       const keep = set.settings; set = blankSet(); set.settings = keep; store.del(STORE);
       $('#progressCard').classList.add('hidden'); $('#inputCard').classList.remove('hidden');
       syncInputs(); renderResult(); window.scrollTo({ top: 0 });
@@ -533,7 +583,7 @@
       if (a === 'fixnote') questionAction(q, 'fix', q.qa.note);
       else if (a === 'ask') { const box = card.querySelector('.ask'); box.classList.toggle('hidden'); box.querySelector('input').focus(); }
       else if (a === 'asksend') { const v = card.querySelector('.ask input').value.trim(); if (!v) return; questionAction(q, 'fix', v); }
-      else if (a === 'replace') { if (confirm('Заменить вопрос новым того же уровня?')) questionAction(q, 'replace'); }
+      else if (a === 'replace') { ask('Заменить вопрос новым того же уровня?', 'Заменить').then(y => { if (y) questionAction(q, 'replace'); }); }
       else if (a === 'code') openCode(q);
       else if (a === 'recheck') { if (ctrl) return toast('Дождитесь окончания текущих шагов'); recheck(q).then(() => renderResult()); }
     });
@@ -554,7 +604,7 @@
     document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', async () => {
       if (!set.questions.length) return;
       const busy = set.questions.filter(q => q.qa.status === 'warn').length;
-      if (busy && !confirm(`${busy} вопрос(ов) требуют проверки. Всё равно выгрузить?`)) return;
+      if (busy && !await ask(`${busy} вопрос(ов) требуют проверки. Всё равно выгрузить?`, 'Выгрузить')) return;
       set.labelsResolved = labels();
       b.disabled = true;
       try { await Exporter.exportFile(set, b.dataset.export); } catch (e) { toast('Ошибка экспорта: ' + e.message, 6000); } finally { b.disabled = false; }
@@ -580,10 +630,30 @@
     return Object.assign({}, base, l, { levels: Object.assign({}, base.levels, l.levels || {}) });
   }
 
+  // Подтверждение внутри страницы: confirm() на claude.ai не показывается
+  function ask(message, okLabel) {
+    const dlg = $('#dlgAsk');
+    $('#askText').textContent = message;
+    $('#askOk').textContent = okLabel || 'Да';
+    dlg.returnValue = '';
+    dlg.showModal();
+    return new Promise(resolve => dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true }));
+  }
+
+  function showDemo() {
+    const keep = set.settings;
+    set = DemoSet(); set.settings = keep; filter = 'all';
+    $('#progressCard').classList.add('hidden'); $('#inputCard').classList.add('hidden');
+    syncInputs(); renderResult(); save(); window.scrollTo({ top: 0 });
+  }
+
   // ---------- старт ----------
+  const firstVisit = !store.get(STORE);
   load();
   bind();
+  if (firstVisit) set = Object.assign(DemoSet(), { settings: set.settings });
   syncInputs();
+  updateBackendUI();
   if (Object.keys(set.steps).length) { $('#progressCard').classList.remove('hidden'); $('#btnStop').disabled = true; renderSteps(); }
   if (set.questions.length) $('#inputCard').classList.add('hidden');
   renderResult();
