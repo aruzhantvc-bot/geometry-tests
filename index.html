@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Тесты по геометрии</title>
+  <meta name="description" content="Конструктор тестов по геометрии из видеоуроков для oilau.kz: 25 вопросов с чертежами, проверка, экспорт в Word, TXT и PNG.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230071e3'/%3E%3Cpath d='M7 24 L16 7 L25 24 Z' fill='none' stroke='white' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="logo">△</span><span>Тесты по геометрии</span></div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btnNew" type="button">Новый набор</button>
+        <button class="btn ghost" id="btnSettings" type="button">Ключ API</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Ввод урока -->
+    <section class="card" id="inputCard">
+      <h1>Урок → 5 тестов с чертежами</h1>
+      <p class="muted">Вставьте конспект или расшифровку видео и скрины доски. Инструмент составит 25 вопросов, построит чертежи, проверит ответы и подготовит файлы для oilau.kz.</p>
+
+      <div class="grid2">
+        <div class="field">
+          <label>Класс</label>
+          <div class="seg" id="segGrade">
+            <button type="button" data-v="7">7</button><button type="button" data-v="8">8</button><button type="button" data-v="9">9</button><button type="button" data-v="10">10</button><button type="button" data-v="11">11</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Язык вопросов</label>
+          <div class="seg" id="segLang">
+            <button type="button" data-v="kk">Қазақша</button><button type="button" data-v="ru">Русский</button><button type="button" data-v="other">Другой</button>
+          </div>
+          <input type="text" id="langName" class="input hidden" placeholder="Название языка, например: English, Oʻzbekcha">
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="topic">Тема урока <span class="muted">— необязательно</span></label>
+          <input type="text" id="topic" class="input" placeholder="Определится по конспекту, если пусто">
+        </div>
+        <div class="field">
+          <label for="videoUrl">Ссылка на видео <span class="muted">— необязательно</span></label>
+          <input type="url" id="videoUrl" class="input" placeholder="https://youtube.com/…">
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="label-row">
+          <label for="notes">Конспект или расшифровка видео</label>
+          <label class="btn small ghost file-btn">Загрузить .txt, .md, .docx<input type="file" id="notesFile" accept=".txt,.md,.docx" hidden></label>
+        </div>
+        <textarea id="notes" class="input" rows="9" placeholder="Вставьте текст урока…"></textarea>
+        <div class="hint-row">
+          <span class="muted" id="notesCount">0 символов</span>
+          <details class="hint"><summary>Как получить расшифровку видео?</summary>
+            <p>YouTube → под видео нажмите «…» → «Показать расшифровку» → выделите текст в панели справа и скопируйте сюда. Добавьте стоп-кадры доски учителя ниже — по ним Claude сохранит чертежи и обозначения урока.</p>
+          </details>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Скрины доски учителя</label>
+        <div class="drop" id="drop" tabindex="0">
+          <div><strong>Перетащите изображения</strong>, вставьте из буфера (Ctrl+V / ⌘V) или <label class="link">выберите файлы<input type="file" id="imgFile" accept="image/*" multiple hidden></label></div>
+          <div class="muted small">До 20 изображений; уменьшаются до 2000 px по большей стороне. После перезагрузки страницы сохраняются только их описания.</div>
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary big" id="btnGenerate" type="button">Создать 25 вопросов</button>
+        <span class="muted" id="genHint"></span>
+      </div>
+    </section>
+
+    <!-- Прогресс -->
+    <section class="card hidden" id="progressCard">
+      <div class="label-row">
+        <h2>Генерация</h2>
+        <button class="btn small danger" id="btnStop" type="button">Остановить</button>
+      </div>
+      <ol class="steps" id="steps"></ol>
+    </section>
+
+    <!-- Результат -->
+    <section class="hidden" id="resultSection">
+      <div class="result-head">
+        <div>
+          <h2 id="resultTitle">Набор</h2>
+          <div class="muted" id="resultMeta"></div>
+        </div>
+        <button class="btn small ghost" id="btnShowInput" type="button">Материалы урока</button>
+      </div>
+      <div class="seg filter" id="segFilter"></div>
+      <div id="questions"></div>
+    </section>
+  </main>
+
+  <footer class="bottombar hidden" id="bottombar">
+    <div class="bottombar-inner">
+      <div class="review-count" id="reviewCount"></div>
+      <div class="exports">
+        <button class="btn" data-export="docx" type="button">Word</button>
+        <button class="btn" data-export="txt" type="button">TXT</button>
+        <button class="btn" data-export="images" type="button">Рисунки</button>
+        <button class="btn primary" data-export="all" type="button">Всё одним архивом</button>
+        <button class="btn ghost icon" id="btnExportSettings" type="button" aria-label="Настройки экспорта">⚙︎</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Диалоги -->
+  <dialog id="dlgKey" class="dlg">
+    <form method="dialog">
+      <h2>Доступ к Claude</h2>
+      <p class="muted">Ключ Anthropic API хранится только в этом браузере и отправляется только на api.anthropic.com. Запросы расходуют лимит этого ключа.</p>
+      <label class="field">Ключ API<input type="password" id="apiKey" class="input" placeholder="sk-ant-…" autocomplete="off"></label>
+      <label class="field">Модель<input type="text" id="apiModel" class="input" placeholder="claude-opus-5-5"></label>
+      <div class="actions end"><button class="btn ghost" value="cancel">Отмена</button><button class="btn primary" id="saveKey" value="ok">Сохранить</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgExport" class="dlg">
+    <form method="dialog">
+      <h2>Настройки экспорта</h2>
+      <label class="check"><input type="checkbox" id="optSolutions"> Краткие решения в Word</label>
+      <label class="check"><input type="checkbox" id="optTag"> Метка рисунка в TXT</label>
+      <label class="field">Шаблон метки <span class="muted">— {file} заменяется именем файла</span><input type="text" id="optTemplate" class="input" placeholder="[img:{file}]"></label>
+      <div class="actions end"><button class="btn primary" value="ok">Готово</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgCode" class="dlg wide">
+    <form method="dialog">
+      <h2>Код рисунка</h2>
+      <p class="muted small">JSON-описание построения. Перед применением проверяется.</p>
+      <select id="codeTarget" class="input"></select>
+      <textarea id="codeText" class="input mono" rows="16" spellcheck="false"></textarea>
+      <div class="code-preview" id="codePreview"></div>
+      <div class="actions end"><span class="err" id="codeErr"></span><button class="btn ghost" value="cancel">Отмена</button><button class="btn primary" id="codeApply" type="button">Применить</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="js/figure.js"></script>
+  <script src="js/prompts.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
