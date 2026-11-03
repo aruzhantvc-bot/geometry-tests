@@ -16,7 +16,6 @@
       <div class="brand"><span class="logo">△</span><span>Тесты по геометрии</span></div>
       <div class="top-actions">
         <button class="btn ghost" id="btnNew" type="button">Новый набор</button>
-        <button class="btn ghost" id="btnSettings" type="button">Ключ API</button>
       </div>
     </div>
   </header>
@@ -126,13 +125,11 @@
   </footer>
 
   <!-- Диалоги -->
-  <dialog id="dlgKey" class="dlg">
+  <dialog id="dlgNoClaude" class="dlg">
     <form method="dialog">
-      <h2>Доступ к Claude</h2>
-      <p class="muted">Ключ Anthropic API хранится только в этом браузере и отправляется только на api.anthropic.com. Запросы расходуют лимит этого ключа.</p>
-      <label class="field">Ключ API<input type="password" id="apiKey" class="input" placeholder="sk-ant-…" autocomplete="off"></label>
-      <label class="field">Модель<input type="text" id="apiModel" class="input" placeholder="claude-opus-5-5"></label>
-      <div class="actions end"><button class="btn ghost" value="cancel">Отмена</button><button class="btn primary" id="saveKey" value="ok">Сохранить</button></div>
+      <h2>Откройте на claude.ai</h2>
+      <p class="muted">Вопросы создаёт Claude через ваш аккаунт claude.ai — без ключа и оплаты. Здесь доступен только пример набора. Откройте прототип на claude.ai и войдите в аккаунт.</p>
+      <div class="actions end"><button class="btn ghost" value="cancel">Закрыть</button><a class="btn primary" href="https://claude.ai/artifact/23gAw49hivCz1c611ZQ424" target="_blank" rel="noopener">Открыть на claude.ai</a></div>
     </form>
   </dialog>
 
